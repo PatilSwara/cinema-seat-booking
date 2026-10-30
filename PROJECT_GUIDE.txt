@@ -13,6 +13,66 @@ requests, validation, sessions and database access. SQLite stores records in a
 real database file through PHP's PDO SQLite extension. No framework or paid API
 is required.
 
+ARCHITECTURE AT A GLANCE (SAY THIS TO THE TEACHER)
+The browser displays HTML, CSS and JavaScript. It sends page requests and forms
+to PHP. PHP validates data, manages sessions, runs SQL through PDO, and returns
+HTML. SQLite keeps the records after the browser or server is closed.
+
+  Browser (HTML + CSS + JavaScript)
+             |  GET page / POST form
+             v
+  public/index.php (page routing, HTML templates, form actions)
+             |  calls functions
+             v
+  app/bootstrap.php (validation, sessions, booking rules, PDO queries)
+             |  prepared SQL
+             v
+  data/cinema.db (persistent SQLite database)
+
+WHICH SIDE DOES WHAT?
+BROWSER / CLIENT SIDE
+- HTML form attributes such as required, type=email, minlength and maxlength
+  catch obvious mistakes before a form is submitted.
+- JavaScript in public/assets/app.js handles seat clicks, the six-seat limit,
+  the visible price total, and the Refresh availability button.
+- These checks improve usability. A visitor can alter browser data, so JavaScript
+  and HTML checks cannot be trusted as the final security checks.
+
+PHP / SERVER SIDE
+- public/index.php receives requests. GET displays pages or returns the current
+  seat map as JSON; POST handles booking, cancellation, account and admin forms.
+- On POST, PHP checks the CSRF token and calls functions in app/bootstrap.php.
+- PHP validates names, email addresses, passwords, dates, prices, seat IDs,
+  ownership of a booking, and admin access before changing the database.
+- PHP reads the real seat prices from SQLite and calculates the final total.
+- After saving a form, PHP redirects to a new page so refreshing the browser
+  does not accidentally submit the same form again.
+
+SQLITE / DATABASE SIDE
+- SQLite stores the records persistently and applies table constraints.
+- A unique index on confirmed showtime/seat pairs is the final double-booking
+  guard. Booking and cancellation transactions keep related rows consistent.
+
+REQUESTS TO POINT OUT DURING THE DEMO
+- GET / shows the movie list. PHP SELECTs movie rows and sends back HTML.
+- GET /index.php?page=showtime&id=... gets showtime and seat rows.
+- Clicking Refresh availability makes JavaScript send a GET request; PHP returns
+  JSON with the current seat states, and JavaScript updates the buttons.
+- Confirm booking sends a POST form to public/index.php. PHP validates, writes
+  to SQLite, and redirects to the saved ticket page.
+- Registration and sign-in send POST forms; PHP creates or checks the user
+  record and stores the user ID in the server-side session.
+
+WHERE EACH FILE GOES
+- public/index.php: the actual HTML markup, page selection, and form handling.
+- public/assets/style.css: colours, layout, responsive rules and focus styles.
+- public/assets/app.js: seat clicks, displayed price/total and seat refresh.
+- public/posters/: the film images shown by the browser.
+- app/bootstrap.php: PHP functions for database, login, booking and cancellation.
+- setup.php: creates the tables and sample films, seats and showtimes.
+- data/cinema.db: the real database file, outside the public web folder.
+- .env.local: private admin password, also outside the public web folder.
+
 3. MAIN USER FLOW
 Home / movie list -> search or filter -> movie details -> select showtime ->
 view seat map -> choose up to six seats -> enter name and email -> confirm ->
@@ -44,6 +104,34 @@ The browser does not decide the final price. PHP reads prices from SQLite and
 calculates the total. Booking uses a transaction. A unique database index allows
 only one confirmed booking for a seat at a given showtime. Cancellation changes
 the booking and its seats to cancelled, so another visitor may book those seats.
+
+TABLE RELATIONSHIPS
+- One movie has many showtimes.
+- One auditorium (Screen 1) has many seats and many showtimes.
+- One booking belongs to one showtime and contains one or more booking_seats.
+- Each booking_seat points to a physical seat and stores the price charged.
+- A registered user can have many bookings. Guest bookings have no user ID.
+
+DETAILED REQUEST FLOW
+1) Browse: the browser requests the home page. PHP reads movies from SQLite and
+   produces the HTML cards. CSS styles them; the posters are image files.
+2) Seat selection: PHP reads seats and prices for the chosen showtime. JavaScript
+   responds to seat clicks and updates the visible total immediately. That total
+   is only a preview; no booking is saved yet.
+3) Confirm: the form sends selected seat IDs, name and email to PHP. PHP checks
+   the CSRF token, validates the details, gets the real prices from SQLite, and
+   inserts the booking plus its seats inside a database transaction. A unique
+   index rejects a seat that another confirmed booking already owns.
+4) Ticket: PHP redirects to the ticket page, reads the saved booking from SQLite,
+   and renders its reference, film, showtime, seats and total as HTML.
+5) History and login: a guest is identified by a browser session. Registration
+   stores a password hash in users and attaches that browser's guest bookings to
+   the new account. After sign-in, bookings are found by user ID, even in another
+   browser. Signing out removes account access from that browser.
+6) Cancellation: PHP checks that the booking belongs to this guest or account,
+   marks it and its seats cancelled in one transaction, and the seats become free.
+7) Admin: a separate admin password protects movie/showtime forms and recent
+   booking records. Admin edits write to the same SQLite file.
 
 6. ACCESSIBILITY POINTS TO SHOW YOUR TEACHER
 - Semantic header, nav, main, sections, headings and footer.
