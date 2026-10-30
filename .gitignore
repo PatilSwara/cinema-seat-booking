@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.npm-cache/
+data/
+work/
+.env*
+!.env.example
+*.log

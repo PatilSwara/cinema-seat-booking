@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-label="Radio tower beneath a starry blue sky">
+<defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#10132c"/><stop offset=".65" stop-color="#30396e"/><stop offset="1" stop-color="#d17b7e"/></linearGradient><radialGradient id="halo"><stop stop-color="#f8dda9" stop-opacity=".8"/><stop offset="1" stop-color="#f8dda9" stop-opacity="0"/></radialGradient></defs>
+<rect width="600" height="800" fill="url(#sky)"/><circle cx="430" cy="180" r="175" fill="url(#halo)"/><circle cx="430" cy="180" r="55" fill="#f8e8bb"/>
+<g fill="#e8d9d4"><circle cx="76" cy="95" r="2"/><circle cx="205" cy="170" r="2"/><circle cx="334" cy="73" r="3"/><circle cx="510" cy="315" r="2"/><circle cx="122" cy="350" r="2"/><circle cx="370" cy="410" r="2"/><circle cx="47" cy="260" r="1.5"/><circle cx="554" cy="69" r="1.5"/></g>
+<path d="M0 650Q125 610 235 648T600 636V800H0Z" fill="#111b3b"/><path d="M0 700Q145 671 300 707T600 680V800H0Z" fill="#0b142d"/>
+<path d="M285 713L306 330L327 713ZM269 713L306 442L343 713" fill="none" stroke="#071125" stroke-width="10"/><path d="M258 500H354M251 580H360M244 653H367" stroke="#071125" stroke-width="9"/><circle cx="306" cy="334" r="10" fill="#ffaf8c"/>
+<g fill="none" stroke="#edb1b1" stroke-opacity=".55" stroke-width="4"><path d="M250 300Q211 334 251 368"/><path d="M362 300Q401 334 361 368"/><path d="M224 278Q161 334 225 391"/><path d="M388 278Q451 334 387 391"/></g>
+<rect x="40" y="733" width="520" height="2" fill="#f2d2b4" opacity=".45"/>
+</svg>
