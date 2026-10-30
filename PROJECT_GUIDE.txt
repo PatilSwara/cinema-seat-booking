@@ -16,19 +16,20 @@ is required.
 3. MAIN USER FLOW
 Home / movie list -> search or filter -> movie details -> select showtime ->
 view seat map -> choose up to six seats -> enter name and email -> confirm ->
-view or print ticket -> My bookings -> optional cancellation.
+view or print ticket -> My bookings -> optional cancellation or account sign-in.
 
 Admin flow: open Admin -> enter password -> add or edit movies and showtimes ->
 review bookings. A showtime with confirmed bookings cannot be changed.
 
-4. SEVEN MEANINGFUL FUNCTIONALITIES
+4. EIGHT MEANINGFUL FUNCTIONALITIES
 1) Browse, search and filter movies.
 2) View upcoming showtimes for a movie.
 3) View seat availability and prices; select seats and see the calculated total.
 4) Create a booking; the server verifies the seats and saves it in SQLite.
-5) View a ticket and the bookings made in the same browser.
+5) View a ticket and guest or account booking history.
 6) Cancel a booking, releasing its seats while keeping the cancelled record.
 7) Admin login, movie/showtime management and recent booking review.
+8) Customer registration and sign-in, with bookings available across browsers.
 
 5. DATABASE DESIGN
 movies: film details and poster information.
@@ -37,6 +38,7 @@ seats: numbered seats and standard/premium tier.
 showtimes: movie, screen, date/time and tier prices.
 bookings: customer details, reference, total and status.
 booking_seats: seats and prices captured for each booking.
+users: customer name, email and a one-way password hash.
 
 The browser does not decide the final price. PHP reads prices from SQLite and
 calculates the total. Booking uses a transaction. A unique database index allows
@@ -54,14 +56,16 @@ the booking and its seats to cancelled, so another visitor may book those seats.
 - Prices and selected seats appear in text, so hover or colour is not required.
 - Responsive layout and reduced-motion support.
 
-7. SHORT DEMO PLAN (ABOUT TWO MINUTES)
+7. SHORT DEMO PLAN (ABOUT THREE MINUTES)
 1) Search for Solar Drift on the home page.
 2) Open a showtime. Hover or keyboard-focus a standard and premium seat; point
    out the different prices and the total updating when seats are selected.
 3) Enter a sample name/email and confirm. Show the saved ticket and reference.
-4) Open My bookings, cancel the booking and show the seats are free again.
-5) Open Admin and show the saved booking record, plus the film/showtime forms.
-Use the same browser throughout; guest bookings belong to that browser session.
+4) Open Account, register, then sign in in a second browser to show the booking.
+5) Cancel the booking and show the seats are free again.
+6) Open Admin and show the saved booking record, plus the film/showtime forms.
+Guest bookings stay in the same browser. Register or sign in to an account to show
+the same bookings in another browser.
 
 8. POSSIBLE VIVA QUESTIONS AND SHORT ANSWERS
 Q: What makes it full-stack?
@@ -82,7 +86,11 @@ Q: How do you stop HTML injection?
 A: User-supplied text is escaped before it is displayed in HTML.
 Q: What is a session?
 A: A server-side way to associate requests from the same browser. It identifies
-   the guest's bookings and whether the admin has signed in.
+   guest bookings and whether a customer or admin has signed in.
+Q: How are customer passwords stored?
+A: PHP hashes them with password_hash; sign-in checks with password_verify.
+Q: Why do bookings appear in a second browser after sign-in?
+A: Account bookings store a user ID in SQLite. The session identifies that user.
 Q: What does cancellation do?
 A: It updates the booking and seat records to cancelled, preserving history and
    making the seats available again.
@@ -91,9 +99,9 @@ A: Semantic HTML, labels, alt text, text errors, strong contrast, visible focus,
    keyboard-operated seat buttons and responsive layouts.
 Q: Why are there no payments?
 A: The course demonstration focuses on the booking/database flow. Integrating a
-   real payment provider would add accounts, costs and security requirements.
+   real payment provider would add external costs and security requirements.
 Q: What would you improve later?
-A: Add customer accounts, email confirmations, payment integration, multiple
+A: Add email confirmations, password reset, payment integration, multiple
    screens and automated accessibility checks after the core flow is complete.
 
 9. DEMO REMINDERS

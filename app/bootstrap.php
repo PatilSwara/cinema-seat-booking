@@ -41,8 +41,44 @@ function check_csrf():void{if(!hash_equals($_SESSION['csrf'],(string)($_POST['cs
 function admin():bool{return !empty($_SESSION['admin']);}
 function require_admin():void{if(!admin())throw new AppError('Admin sign-in required.',403);}
 function uuid():string{$h=bin2hex(random_bytes(16));return substr($h,0,8).'-'.substr($h,8,4).'-4'.substr($h,13,3).'-a'.substr($h,17,3).'-'.substr($h,20,12);}
+function current_user():array|false {
+  if(empty($_SESSION['user_id'])) return false;
+  return row('SELECT id,name,email FROM users WHERE id=?',[$_SESSION['user_id']]);
+}
+function claim_guest_bookings(string $userId):void {
+  run('UPDATE bookings SET user_id=? WHERE guest_id=? AND user_id IS NULL',[$userId,$_SESSION['guest_id']]);
+}
+function register_user(array $input):void {
+  $name=trim(preg_replace('/\s+/',' ',(string)($input['name']??'')));
+  $email=strtolower(trim((string)($input['email']??'')));
+  $password=(string)($input['password']??'');
+  if(mb_strlen($name)<2||mb_strlen($name)>60)throw new AppError('Enter your name (2–60 characters).');
+  if(strlen($email)>120||!filter_var($email,FILTER_VALIDATE_EMAIL))throw new AppError('Enter a valid email address.');
+  if(strlen($password)<8||strlen($password)>128)throw new AppError('Use a password of 8–128 characters.');
+  if($password!==(string)($input['confirm_password']??''))throw new AppError('Passwords do not match.');
+  $id=uuid();
+  try{run('INSERT INTO users(id,name,email,password_hash) VALUES (?,?,?,?)',[$id,$name,$email,password_hash($password,PASSWORD_DEFAULT)]);}
+  catch(PDOException $ex){if(str_contains($ex->getMessage(),'UNIQUE constraint'))throw new AppError('An account with this email already exists. Sign in instead.');throw $ex;}
+  session_regenerate_id(true);$_SESSION['user_id']=$id;claim_guest_bookings($id);
+}
+function login_user(array $input):void {
+  $email=strtolower(trim((string)($input['email']??'')));
+  $user=row('SELECT id,password_hash FROM users WHERE email=?',[$email]);
+  if(!$user||!password_verify((string)($input['password']??''),$user['password_hash']))throw new AppError('Email or password is incorrect.',401);
+  session_regenerate_id(true);$_SESSION['user_id']=$user['id'];claim_guest_bookings($user['id']);
+}
+function logout_user():void {
+  unset($_SESSION['user_id']);
+  $_SESSION['guest_id']=bin2hex(random_bytes(16));
+  $_SESSION['csrf']=bin2hex(random_bytes(24));
+  session_regenerate_id(true);
+}
 function seat_map(string $id):array{return rows("SELECT se.id,se.row_label,se.seat_number,se.tier,CASE WHEN bs.seat_id IS NULL THEN 0 ELSE 1 END AS booked FROM seats se LEFT JOIN booking_seats bs ON bs.seat_id=se.id AND bs.showtime_id=? AND bs.status='confirmed' WHERE se.auditorium_id='screen-one' ORDER BY se.row_label,se.seat_number",[$id]);}
-function guest_bookings():array{return rows("SELECT b.*,s.starts_at,m.title AS movie_title,a.name AS auditorium_name,GROUP_CONCAT(se.row_label||se.seat_number,', ') AS seat_labels FROM bookings b JOIN showtimes s ON s.id=b.showtime_id JOIN movies m ON m.id=s.movie_id JOIN auditoriums a ON a.id=s.auditorium_id JOIN booking_seats bs ON bs.booking_id=b.id JOIN seats se ON se.id=bs.seat_id WHERE b.guest_id=? GROUP BY b.id ORDER BY b.created_at DESC",[$_SESSION['guest_id']]);}
+function my_bookings():array{
+  $owner=empty($_SESSION['user_id'])?'b.guest_id=?':'b.user_id=?';
+  $id=$_SESSION['user_id']??$_SESSION['guest_id'];
+  return rows("SELECT b.*,s.starts_at,m.title AS movie_title,a.name AS auditorium_name,GROUP_CONCAT(se.row_label||se.seat_number,', ') AS seat_labels FROM bookings b JOIN showtimes s ON s.id=b.showtime_id JOIN movies m ON m.id=s.movie_id JOIN auditoriums a ON a.id=s.auditorium_id JOIN booking_seats bs ON bs.booking_id=b.id JOIN seats se ON se.id=bs.seat_id WHERE $owner GROUP BY b.id ORDER BY b.created_at DESC",[$id]);
+}
 function create_booking(array $input):string {
   $showId=(string)($input['showtime_id']??'');
   $ids=array_values(array_filter(array_map('trim',explode(',',(string)($input['seats']??'')))));
@@ -61,7 +97,7 @@ function create_booking(array $input):string {
     if(count($seats)!==count($ids))throw new AppError('One of the selected seats is invalid.');
     $prices=[];foreach($seats as $seat)$prices[$seat['id']]=(int)$show[$seat['tier']==='premium'?'premium_price':'standard_price'];
     $id=uuid();$ref='RS-'.strtoupper(bin2hex(random_bytes(5)));
-    run("INSERT INTO bookings (id,reference,guest_id,showtime_id,customer_name,customer_email,total_amount,status) VALUES (?,?,?,?,?,?,?,'confirmed')",[$id,$ref,$_SESSION['guest_id'],$showId,$name,$email,array_sum($prices)]);
+    run("INSERT INTO bookings (id,reference,guest_id,user_id,showtime_id,customer_name,customer_email,total_amount,status) VALUES (?,?,?,?,?,?,?,?,'confirmed')",[$id,$ref,$_SESSION['guest_id'],$_SESSION['user_id']??null,$showId,$name,$email,array_sum($prices)]);
     foreach($ids as $seatId)run("INSERT INTO booking_seats (booking_id,showtime_id,seat_id,price_at_booking,status) VALUES (?,?,?,?,'confirmed')",[$id,$showId,$seatId,$prices[$seatId]]);
     $pdo->commit();return $ref;
   } catch(Throwable $ex){
@@ -73,7 +109,8 @@ function create_booking(array $input):string {
 function cancel_booking(string $ref):void {
   $pdo=db();$pdo->exec('BEGIN IMMEDIATE');
   try {
-    $b=row('SELECT id,status FROM bookings WHERE reference=? AND guest_id=?',[$ref,$_SESSION['guest_id']]);
+    $owner=empty($_SESSION['user_id'])?'guest_id=?':'user_id=?';
+    $b=row("SELECT id,status FROM bookings WHERE reference=? AND $owner",[$ref,$_SESSION['user_id']??$_SESSION['guest_id']]);
     if(!$b)throw new AppError('Booking not found.',404);
     if($b['status']!=='confirmed')throw new AppError('Booking is already cancelled.',409);
     run("UPDATE bookings SET status='cancelled',cancelled_at=datetime('now') WHERE id=?",[$b['id']]);

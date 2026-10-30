@@ -1,5 +1,7 @@
 const form = document.querySelector('#booking-form');
 if (form) {
+  document.querySelector('#customer-name').value = form.dataset.name || '';
+  document.querySelector('#customer-email').value = form.dataset.email || '';
   const buttons = [...form.querySelectorAll('.seat')];
   const selected = new Set();
   const hidden = document.querySelector('#selected-seats');

@@ -2,15 +2,16 @@
 
 A compact, accessible cinema booking website for a Web Technology course. It uses **HTML, CSS, plain JavaScript, PHP and SQLite**. No framework, Node.js, paid API or payment provider is needed to run the site.
 
-## Seven features
+## Eight features
 
 1. Browse, search and filter fictional films.
 2. View each film's upcoming showtimes.
 3. Choose seats, inspect prices on hover or keyboard focus, refresh availability, and see the live total.
 4. Confirm a booking with a name and email. PHP calculates the total and SQLite prevents double booking.
-5. View or print a ticket and revisit bookings from the same browser.
+5. View or print a ticket and revisit guest or account bookings.
 6. Cancel a booking and release its seats while retaining the record.
 7. Sign in as admin to add/edit films and showtimes and inspect recent bookings.
+8. Register and sign in as a customer to see bookings across browsers; guest booking remains available.
 
 ## Run on this computer
 
@@ -32,9 +33,9 @@ The database is `data/cinema.db`. `setup.php` creates the schema, three movies, 
 
 `public/index.php` renders pages and handles form submissions. `app/bootstrap.php` contains database access, validation, booking and cancellation logic. `public/assets/app.js` controls seat selection and updates the total. `public/assets/style.css` provides the responsive design. `setup.php` creates and seeds the SQLite database.
 
-The six tables are `movies`, `auditoriums`, `seats`, `showtimes`, `bookings` and `booking_seats`. PHP uses prepared statements for user input. Booking and cancellation run inside transactions. A unique index prevents two confirmed bookings for the same seat and showtime. The total is recalculated on the server, rather than trusted from JavaScript.
+The seven tables are `movies`, `auditoriums`, `seats`, `showtimes`, `bookings`, `booking_seats` and `users`. PHP uses prepared statements for user input. Booking and cancellation run inside transactions. A unique index prevents two confirmed bookings for the same seat and showtime. The total is recalculated on the server, rather than trusted from JavaScript.
 
-Guest history is linked to a PHP session cookie, so use the same browser throughout a demo. Customer data is escaped before it appears in HTML. Forms include CSRF tokens. The `data/` and `.env.local` files are ignored by Git and live outside the web document root.
+Guest history is linked to a PHP session cookie. Customer accounts use hashed passwords and link bookings to a user ID, so signed-in users can see tickets in another browser. Signing in also claims guest bookings made in that browser. Customer data is escaped before it appears in HTML. Forms include CSRF tokens. The `data/` and `.env.local` files are ignored by Git and live outside the web document root.
 
 ## Accessibility and demo
 

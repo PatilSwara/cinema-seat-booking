@@ -14,6 +14,10 @@ $sql = [
   "CREATE INDEX IF NOT EXISTS showtimes_movie_idx ON showtimes(movie_id,starts_at)"
 ];
 foreach($sql as $statement) db()->exec($statement);
+db()->exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT(datetime('now')))");
+$bookingColumns=array_column(db()->query('PRAGMA table_info(bookings)')->fetchAll(),'name');
+if(!in_array('user_id',$bookingColumns,true)) db()->exec('ALTER TABLE bookings ADD COLUMN user_id TEXT REFERENCES users(id)');
+db()->exec('CREATE INDEX IF NOT EXISTS bookings_user_idx ON bookings(user_id,created_at)');
 
 if((int)row('SELECT COUNT(*) AS n FROM movies')['n']===0){
   $movies=[
