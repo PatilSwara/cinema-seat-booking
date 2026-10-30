@@ -1,0 +1,136 @@
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/app/bootstrap.php';
+$page=(string)($_GET['page']??'home');
+$id=(string)($_GET['id']??'');
+$now=gmdate('Y-m-d\TH:i:s.000\Z');
+
+if($page==='seats-json'){
+  header('Content-Type: application/json; charset=utf-8');
+  $show=row('SELECT id FROM showtimes WHERE id=? AND active=1 AND starts_at>?',[$id,$now]);
+  if(!$show){http_response_code(404);echo json_encode(['error'=>'Showtime unavailable']);exit;}
+  echo json_encode(['seats'=>seat_map($id)]);exit;
+}
+
+if($_SERVER['REQUEST_METHOD']==='POST'){
+  $action=(string)($_POST['action']??'');
+  try{
+    check_csrf();
+    if($action==='book') redirect(url('ticket',['ref'=>create_booking($_POST)]));
+    if($action==='cancel'){cancel_booking((string)($_POST['ref']??''));$_SESSION['notice']='Booking cancelled. Its seats are available again.';redirect(url('bookings'));}
+    if($action==='login'){
+      $password=setting('ADMIN_PASSWORD');
+      if(strlen($password)<12||!hash_equals($password,(string)($_POST['password']??'')))throw new AppError('Incorrect admin password.',401);
+      session_regenerate_id(true);$_SESSION['admin']=true;redirect(url('admin'));
+    }
+    if($action==='logout'){unset($_SESSION['admin']);redirect(url('admin'));}
+    require_admin();
+    if($action==='movie-add'){
+      [$title,$genre,$synopsis,$duration]=movie_input($_POST);
+      run('INSERT INTO movies (id,title,genre,duration_minutes,certificate,synopsis,poster_path,poster_alt) VALUES (?,?,?,?,?,?,?,?)',[uuid(),$title,$genre,$duration,'U',$synopsis,'/posters/default.svg','Abstract cinema artwork for '.$title]);
+      $_SESSION['notice']='Movie added.';redirect(url('admin'));
+    }
+    if($action==='movie-update'){
+      $movieId=(string)($_POST['id']??'');
+      if(!row('SELECT id FROM movies WHERE id=?',[$movieId]))throw new AppError('Movie not found.',404);
+      [$title,$genre,$synopsis,$duration]=movie_input($_POST);
+      run('UPDATE movies SET title=?,genre=?,synopsis=?,duration_minutes=? WHERE id=?',[$title,$genre,$synopsis,$duration,$movieId]);
+      $_SESSION['notice']='Movie updated.';redirect(url('admin'));
+    }
+    if($action==='show-add'){
+      [$movie,$starts,$standard,$premium]=show_input($_POST);
+      assert_screen_free($starts,(int)$movie['duration_minutes']);
+      run("INSERT INTO showtimes (id,movie_id,auditorium_id,starts_at,standard_price,premium_price) VALUES (?,?,'screen-one',?,?,?)",[uuid(),$movie['id'],$starts,$standard,$premium]);
+      $_SESSION['notice']='Showtime added.';redirect(url('admin'));
+    }
+    if($action==='show-update'){
+      $showId=(string)($_POST['id']??'');
+      $old=row('SELECT s.id,s.movie_id,m.duration_minutes FROM showtimes s JOIN movies m ON m.id=s.movie_id WHERE s.id=?',[$showId]);
+      if(!$old)throw new AppError('Showtime not found.',404);
+      if(row("SELECT id FROM bookings WHERE showtime_id=? AND status='confirmed' LIMIT 1",[$showId]))throw new AppError('A showtime with confirmed bookings cannot be changed.',409);
+      $_POST['movie_id']=$old['movie_id'];
+      [, $starts,$standard,$premium]=show_input($_POST);
+      assert_screen_free($starts,(int)$old['duration_minutes'],$showId);
+      run('UPDATE showtimes SET starts_at=?,standard_price=?,premium_price=? WHERE id=?',[$starts,$standard,$premium,$showId]);
+      $_SESSION['notice']='Showtime updated.';redirect(url('admin'));
+    }
+    throw new AppError('Unknown action.');
+  }catch(AppError $ex){
+    $_SESSION['error']=$ex->getMessage();
+    $return=match($action){'book'=>url('showtime',['id'=>(string)($_POST['showtime_id']??'')]),'cancel'=>url('bookings'),default=>url('admin')};
+    redirect($return);
+  }
+}
+
+function layout_start(string $title):void{?>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Browse films and book cinema seats with ReelSeat."><title><?=e($title)?> | ReelSeat Cinema</title><link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script></head>
+<body><a class="skip-link" href="#main-content">Skip to main content</a><div class="site-shell">
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="ReelSeat home"><span class="brand-mark" aria-hidden="true">R</span><span>reel<span class="brand-accent">seat</span></span></a><nav class="main-nav" aria-label="Main navigation"><a href="/">Movies</a><a href="<?=e(url('bookings'))?>">My bookings</a><a href="<?=e(url('admin'))?>">Admin</a></nav></div></header>
+<main id="main-content">
+<?php if(!empty($_SESSION['error'])):?><div class="container"><p class="form-error" role="alert"><?=e($_SESSION['error'])?></p></div><?php unset($_SESSION['error']);endif;?>
+<?php if(!empty($_SESSION['notice'])):?><div class="container"><p class="form-success" role="status"><?=e($_SESSION['notice'])?></p></div><?php unset($_SESSION['notice']);endif;?>
+<?php }
+function layout_end():void{?></main><footer class="site-footer"><div class="container footer-inner"><span>© <?=date('Y')?> ReelSeat Cinema</span><span>Find your seat. Enjoy the story.</span></div></footer></div></body></html><?php }
+
+if($page==='home'){
+  $search=trim((string)($_GET['search']??''));$genre=trim((string)($_GET['genre']??''));
+  $movies=rows("SELECT m.*,COUNT(s.id) AS upcoming_showtimes FROM movies m LEFT JOIN showtimes s ON s.movie_id=m.id AND s.active=1 AND s.starts_at>? WHERE m.active=1 AND m.title LIKE ? AND (?='' OR m.genre=?) GROUP BY m.id ORDER BY m.title",[$now,'%'.substr($search,0,80).'%',$genre,$genre]);
+  $genres=rows('SELECT DISTINCT genre FROM movies WHERE active=1 ORDER BY genre');
+  layout_start('Book your next movie');?>
+  <section class="hero"><div class="container hero-inner"><div class="hero-copy"><p class="eyebrow">YOUR NEXT STORY STARTS HERE</p><h1>Big screen magic.<br><span>One perfect seat.</span></h1><p>Discover what is showing, choose your seats, and book in a few easy steps.</p><a class="button button-primary" href="#now-showing">Explore movies <span aria-hidden="true">→</span></a></div><div class="hero-art" aria-hidden="true"><div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div><div class="hero-ticket"><span>REELSEAT</span><strong>THE BEST SEAT<br>IS YOURS</strong><small>ADMIT ONE • SCREEN 1</small></div><div class="hero-glow"></div></div></div></section>
+  <section class="catalog-section container" id="now-showing" aria-labelledby="catalog-title"><div class="section-heading"><div><p class="eyebrow eyebrow-dark">CURATED FOR THE BIG SCREEN</p><h2 id="catalog-title">Now showing</h2></div><p>Pick a film and find a showtime that fits your day.</p></div>
+  <form class="filter-bar" method="get" role="search"><div class="field"><label for="movie-search">Search movies</label><input id="movie-search" name="search" type="search" value="<?=e($search)?>" placeholder="Search by title"></div><div class="field field-select"><label for="movie-genre">Genre</label><select id="movie-genre" name="genre"><option value="">All genres</option><?php foreach($genres as $g):?><option value="<?=e($g['genre'])?>" <?=$genre===$g['genre']?'selected':''?>><?=e($g['genre'])?></option><?php endforeach;?></select></div><button class="button button-dark" type="submit">Find movies</button></form>
+  <?php if($movies):?><div class="movie-grid"><?php foreach($movies as $m):?><article class="movie-card"><a class="poster-link" href="<?=e(url('movie',['id'=>$m['id']]))?>" aria-label="View <?=e($m['title'])?> showtimes"><img class="movie-poster" src="<?=e($m['poster_path'])?>" alt="<?=e($m['poster_alt'])?>"><span class="poster-overlay" aria-hidden="true">View showtimes →</span></a><div class="movie-card-body"><div class="movie-meta"><span><?=e($m['genre'])?></span><span><?=e($m['duration_minutes'])?> min</span></div><h3><a href="<?=e(url('movie',['id'=>$m['id']]))?>"><?=e($m['title'])?></a></h3><p><?=e($m['synopsis'])?></p><span class="showtime-count"><?=e($m['upcoming_showtimes'])?> upcoming shows</span></div></article><?php endforeach;?></div><?php else:?><div class="empty-state"><h3>No movies found</h3><p>Try another title or genre.</p><a class="text-link" href="/">Clear filters</a></div><?php endif;?></section>
+<?php layout_end();exit;}
+
+if($page==='movie'){
+  $movie=row('SELECT * FROM movies WHERE id=? AND active=1',[$id]);
+  if(!$movie){http_response_code(404);layout_start('Movie not found');echo '<div class="container page-space"><h1>Movie not found</h1></div>';layout_end();exit;}
+  $shows=rows("SELECT s.*,a.name AS screen FROM showtimes s JOIN auditoriums a ON a.id=s.auditorium_id WHERE s.movie_id=? AND s.active=1 AND s.starts_at>? ORDER BY s.starts_at",[$id,$now]);
+  layout_start($movie['title']);?>
+  <div class="container page-space"><a class="breadcrumb" href="/">← All movies</a><section class="movie-detail"><img class="detail-poster" src="<?=e($movie['poster_path'])?>" alt="<?=e($movie['poster_alt'])?>"><div class="detail-copy"><p class="eyebrow eyebrow-dark">NOW SHOWING</p><h1><?=e($movie['title'])?></h1><div class="detail-tags"><span><?=e($movie['genre'])?></span><span><?=e($movie['duration_minutes'])?> min</span><span><?=e($movie['certificate'])?></span></div><p><?=e($movie['synopsis'])?></p></div></section><section class="showtimes-section" aria-labelledby="shows-title"><div class="section-heading compact"><h2 id="shows-title">Choose a showtime</h2><p>All times are shown in Indian Standard Time.</p></div><?php if($shows):?><div class="showtime-grid"><?php foreach($shows as $s):?><a class="showtime-card" href="<?=e(url('showtime',['id'=>$s['id']]))?>"><strong><?=e(when($s['starts_at']))?></strong><span><?=e($s['screen'])?> · from <?=money($s['standard_price'])?></span><span class="text-link">Choose seats →</span></a><?php endforeach;?></div><?php else:?><div class="empty-state"><p>No upcoming shows yet.</p></div><?php endif;?></section></div>
+<?php layout_end();exit;}
+
+if($page==='showtime'){
+  $show=row("SELECT s.*,m.title AS movie_title,m.active AS movie_active,a.name AS screen FROM showtimes s JOIN movies m ON m.id=s.movie_id JOIN auditoriums a ON a.id=s.auditorium_id WHERE s.id=? AND s.active=1 AND s.starts_at>?",[$id,$now]);
+  if(!$show||!$show['movie_active']){http_response_code(404);layout_start('Showtime not found');echo '<div class="container page-space"><h1>Showtime unavailable</h1></div>';layout_end();exit;}
+  $seats=seat_map($id);$groups=[];foreach($seats as $seat)$groups[$seat['row_label']][]=$seat;
+  layout_start('Choose seats');?>
+  <div class="container page-space"><a class="breadcrumb" href="<?=e(url('movie',['id'=>$show['movie_id']]))?>">← <?=e($show['movie_title'])?></a><div class="booking-heading"><div><p class="eyebrow eyebrow-dark">STEP 2 OF 2</p><h1>Choose your seats</h1><p><?=e($show['movie_title'])?> · <?=e(when($show['starts_at']))?> · <?=e($show['screen'])?></p></div></div>
+  <form class="seat-layout" method="post" id="booking-form" data-showtime="<?=e($id)?>"><input type="hidden" name="action" value="book"><input type="hidden" name="showtime_id" value="<?=e($id)?>"><input type="hidden" name="seats" id="selected-seats"><?=csrf_field()?>
+  <section class="seat-panel" aria-labelledby="seat-map-title"><div class="seat-panel-header"><div><h2 id="seat-map-title">Select your seats</h2><p>Choose up to six seats. Hover, focus, or tap to check a price.</p></div><button class="text-button" type="button" id="refresh-seats">Refresh availability</button></div>
+  <div class="seat-legend" aria-label="Seat legend"><span><i class="legend-seat legend-available" aria-hidden="true"></i> Available</span><span><i class="legend-seat legend-selected" aria-hidden="true"></i> Selected</span><span><i class="legend-seat legend-booked" aria-hidden="true"></i> Booked</span><span>Standard <?=money($show['standard_price'])?> · Premium <?=money($show['premium_price'])?></span></div>
+  <div class="seat-map-scroll"><div class="seat-map"><div class="screen-line" aria-hidden="true"></div><p class="screen-label">SCREEN THIS WAY</p><div class="seat-rows"><?php foreach($groups as $label=>$group):?><div class="seat-row" role="group" aria-label="Row <?=e($label)?>"><span class="row-label" aria-hidden="true"><?=e($label)?></span><?php foreach($group as $seat):$price=$seat['tier']==='premium'?$show['premium_price']:$show['standard_price'];?><button type="button" class="seat seat-<?=e($seat['tier'])?> <?=$seat['booked']?'seat-booked':''?>" data-id="<?=e($seat['id'])?>" data-tier="<?=e($seat['tier'])?>" data-price="<?=money($price)?>" data-amount="<?=e($price)?>" aria-label="Row <?=e($label)?>, seat <?=e($seat['seat_number'])?>, <?=e($seat['tier'])?>, <?=$seat['booked']?'booked':money($price).', available'?>" aria-pressed="false" <?=$seat['booked']?'disabled':''?>><?=e($seat['seat_number'])?></button><?php endforeach;?><span class="row-label" aria-hidden="true"><?=e($label)?></span></div><?php endforeach;?></div><p class="seat-map-note">Rows E and F are Premium seats.</p></div></div></section>
+  <aside class="checkout-panel" aria-labelledby="summary-title"><h2 id="summary-title">Booking summary</h2><p class="checkout-movie"><?=e($show['movie_title'])?></p><div class="summary-line"><span>Selected seats</span><strong id="selected-labels" aria-live="polite">None yet</strong></div><ul class="selected-seat-prices" id="selected-prices" aria-label="Selected seat prices"></ul><div class="summary-line"><span>Tickets</span><strong id="ticket-count">0</strong></div><div class="summary-total"><span>Total</span><strong id="booking-total" aria-live="polite">₹0</strong></div><div class="checkout-fields"><h3>Your details</h3><p>Required fields are marked *. Your ticket stays available in this browser.</p><div class="field"><label for="customer-name">Full name *</label><input id="customer-name" name="name" autocomplete="name" required minlength="2" maxlength="60" placeholder="Your full name"></div><div class="field"><label for="customer-email">Email address *</label><input id="customer-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></div></div><p class="form-error" id="seat-error" role="alert" hidden></p><button class="button button-primary checkout-button" id="book-button" type="submit" disabled>Choose seats to continue</button><p class="checkout-note">Demo project — no payment is collected.</p></aside></form></div>
+<?php layout_end();exit;}
+
+if($page==='bookings'){
+  $bookings=guest_bookings();layout_start('My bookings');?>
+  <div class="container page-space narrow-page"><div class="page-title"><p class="eyebrow eyebrow-dark">YOUR CINEMA PLANS</p><h1>My bookings</h1><p>Bookings made in this browser appear here.</p></div><?php if($bookings):?><div class="booking-list"><?php foreach($bookings as $b):?><article class="booking-card"><div class="booking-card-top"><span class="status status-<?=e($b['status'])?>"><?=e(ucfirst($b['status']))?></span><span class="booking-ref"><?=e($b['reference'])?></span></div><h2><?=e($b['movie_title'])?></h2><p><?=e(when($b['starts_at']))?> · <?=e($b['auditorium_name'])?></p><div class="booking-facts"><span>Seats <strong><?=e($b['seat_labels'])?></strong></span><span>Total <strong><?=money($b['total_amount'])?></strong></span></div><div class="booking-actions"><a class="button button-dark" href="<?=e(url('ticket',['ref'=>$b['reference']]))?>">View ticket</a><?php if($b['status']==='confirmed'):?><form method="post" class="cancel-form"><?=csrf_field()?><input type="hidden" name="action" value="cancel"><input type="hidden" name="ref" value="<?=e($b['reference'])?>"><button class="button button-outline" type="submit">Cancel booking</button></form><?php endif;?></div></article><?php endforeach;?></div><?php else:?><div class="empty-state"><h2>No bookings yet</h2><p>Your tickets will appear here after you book a movie.</p><a class="button button-primary" href="/">Browse movies</a></div><?php endif;?></div>
+<?php layout_end();exit;}
+
+if($page==='ticket'){
+  $ref=(string)($_GET['ref']??'');$booking=false;
+  foreach(guest_bookings() as $item)if($item['reference']===$ref){$booking=$item;break;}
+  if(!$booking){http_response_code(404);layout_start('Ticket not found');echo '<div class="container page-space"><h1>Ticket not found</h1><p>Open My bookings in the browser used to book.</p></div>';layout_end();exit;}
+  layout_start('Ticket '.$ref);?>
+  <div class="container page-space ticket-page"><a class="breadcrumb" href="<?=e(url('bookings'))?>">← My bookings</a><div class="page-title"><p class="eyebrow eyebrow-dark">YOUR BOOKING</p><h1>Your ticket</h1></div><article class="ticket"><div class="ticket-top"><span class="ticket-brand">reel<span>seat</span></span><span class="status status-<?=e($booking['status'])?>"><?=e(ucfirst($booking['status']))?></span></div><div class="ticket-main"><p class="eyebrow eyebrow-dark">ADMIT <?=substr_count($booking['seat_labels'],',')+1?></p><h2><?=e($booking['movie_title'])?></h2><div class="ticket-grid"><div><span>Date and time</span><strong><?=e(when($booking['starts_at']))?></strong></div><div><span>Screen</span><strong><?=e($booking['auditorium_name'])?></strong></div><div><span>Seats</span><strong><?=e($booking['seat_labels'])?></strong></div><div><span>Total</span><strong><?=money($booking['total_amount'])?></strong></div></div></div><div class="ticket-bottom"><span>Booking reference</span><strong><?=e($booking['reference'])?></strong><small>Booked for <?=e($booking['customer_name'])?></small></div></article><div class="ticket-actions"><button class="button button-dark" type="button" id="print-ticket">Print ticket</button><a class="button button-outline" href="<?=e(url('bookings'))?>">My bookings</a></div></div>
+<?php layout_end();exit;}
+
+if($page==='admin'){
+  layout_start('Admin');?><div class="container page-space"><div class="page-title"><p class="eyebrow eyebrow-dark">CINEMA CONTROL ROOM</p><h1>Admin dashboard</h1><p>Manage films, showtimes and recent bookings.</p></div>
+  <?php if(!admin()):?><section class="surface-card login-card" aria-labelledby="sign-in-title"><h2 id="sign-in-title">Admin sign in</h2><form class="stacked-form" method="post"><?=csrf_field()?><input type="hidden" name="action" value="login"><div class="field"><label for="admin-password">Password</label><input id="admin-password" name="password" type="password" required autocomplete="current-password" placeholder="Enter admin password"></div><button class="button button-dark" type="submit">Sign in</button></form></section>
+  <?php else:
+    $movies=rows('SELECT * FROM movies ORDER BY created_at DESC');
+    $shows=rows('SELECT s.*,m.title AS movie_title FROM showtimes s JOIN movies m ON m.id=s.movie_id ORDER BY s.starts_at DESC LIMIT 30');
+    $bookings=rows("SELECT b.reference,b.customer_name,b.total_amount,b.status,m.title AS movie_title,s.starts_at,COUNT(bs.seat_id) AS seat_count FROM bookings b JOIN showtimes s ON s.id=b.showtime_id JOIN movies m ON m.id=s.movie_id JOIN booking_seats bs ON bs.booking_id=b.id GROUP BY b.id ORDER BY b.created_at DESC LIMIT 30");?>
+    <div class="admin-toolbar"><div class="admin-stats"><div><strong><?=count($movies)?></strong><span>Movies</span></div><div><strong><?=count($shows)?></strong><span>Showtimes</span></div><div><strong><?=count($bookings)?></strong><span>Recent bookings</span></div></div><form method="post"><?=csrf_field()?><input type="hidden" name="action" value="logout"><button class="button button-outline" type="submit">Sign out</button></form></div>
+    <div class="admin-form-grid"><section class="surface-card" aria-labelledby="add-movie-title"><h2 id="add-movie-title">Add a movie</h2><p>New films use the default abstract poster.</p><form class="stacked-form" method="post"><?=csrf_field()?><input type="hidden" name="action" value="movie-add"><div class="field"><label for="new-title">Title</label><input id="new-title" name="title" required minlength="2" maxlength="80" placeholder="Movie title"></div><div class="field-row"><div class="field"><label for="new-genre">Genre</label><input id="new-genre" name="genre" required minlength="2" maxlength="30" placeholder="Drama"></div><div class="field"><label for="new-duration">Duration (minutes)</label><input id="new-duration" name="duration" type="number" min="30" max="300" required placeholder="110"></div></div><div class="field"><label for="new-synopsis">Synopsis</label><textarea id="new-synopsis" name="synopsis" rows="3" minlength="10" maxlength="500" required placeholder="A short description of the story"></textarea></div><button class="button button-dark" type="submit">Add movie</button></form></section>
+    <section class="surface-card" aria-labelledby="add-show-title"><h2 id="add-show-title">Add a showtime</h2><p>All showtimes use Screen 1.</p><form class="stacked-form" method="post"><?=csrf_field()?><input type="hidden" name="action" value="show-add"><div class="field"><label for="new-show-movie">Movie</label><select id="new-show-movie" name="movie_id" required><option value="">Choose a movie</option><?php foreach($movies as $m)if($m['active']):?><option value="<?=e($m['id'])?>"><?=e($m['title'])?></option><?php endif;?></select></div><div class="field"><label for="new-show-time">Date and time (IST)</label><input id="new-show-time" name="starts_at" type="datetime-local" required></div><div class="field-row"><div class="field"><label for="new-std">Standard price (₹)</label><input id="new-std" name="standard_price" type="number" min="0" max="10000" value="180" required></div><div class="field"><label for="new-premium">Premium price (₹)</label><input id="new-premium" name="premium_price" type="number" min="0" max="10000" value="250" required></div></div><button class="button button-dark" type="submit">Add showtime</button></form></section></div>
+    <section class="admin-section" aria-labelledby="manage-movies"><div class="section-heading compact"><h2 id="manage-movies">Manage movies</h2><p>Edit the details shown to visitors.</p></div><div class="admin-details-list"><?php foreach($movies as $m):?><details class="admin-details"><summary><strong><?=e($m['title'])?></strong><span><?=e($m['genre'])?> · <?=e($m['duration_minutes'])?> min</span></summary><form class="stacked-form" method="post"><?=csrf_field()?><input type="hidden" name="action" value="movie-update"><input type="hidden" name="id" value="<?=e($m['id'])?>"><div class="field-row"><div class="field"><label for="title-<?=e($m['id'])?>">Title</label><input id="title-<?=e($m['id'])?>" name="title" value="<?=e($m['title'])?>" required></div><div class="field"><label for="genre-<?=e($m['id'])?>">Genre</label><input id="genre-<?=e($m['id'])?>" name="genre" value="<?=e($m['genre'])?>" required></div></div><div class="field"><label for="duration-<?=e($m['id'])?>">Duration (minutes)</label><input id="duration-<?=e($m['id'])?>" name="duration" type="number" min="30" max="300" value="<?=e($m['duration_minutes'])?>" required></div><div class="field"><label for="synopsis-<?=e($m['id'])?>">Synopsis</label><textarea id="synopsis-<?=e($m['id'])?>" name="synopsis" rows="3" required><?=e($m['synopsis'])?></textarea></div><button class="button button-dark" type="submit">Save movie</button></form></details><?php endforeach;?></div></section>
+    <section class="admin-section" aria-labelledby="manage-shows"><div class="section-heading compact"><h2 id="manage-shows">Manage showtimes</h2><p>Change time or prices before bookings begin.</p></div><div class="admin-details-list"><?php foreach($shows as $s):?><details class="admin-details"><summary><strong><?=e($s['movie_title'])?></strong><span><?=e(when($s['starts_at']))?> · <?=money($s['standard_price'])?></span></summary><form class="stacked-form" method="post"><?=csrf_field()?><input type="hidden" name="action" value="show-update"><input type="hidden" name="id" value="<?=e($s['id'])?>"><div class="field"><label for="show-time-<?=e($s['id'])?>">Date and time (IST)</label><input id="show-time-<?=e($s['id'])?>" name="starts_at" type="datetime-local" value="<?=e(local_input($s['starts_at']))?>" required></div><div class="field-row"><div class="field"><label for="show-std-<?=e($s['id'])?>">Standard price (₹)</label><input id="show-std-<?=e($s['id'])?>" name="standard_price" type="number" min="0" max="10000" value="<?=e($s['standard_price'])?>" required></div><div class="field"><label for="show-premium-<?=e($s['id'])?>">Premium price (₹)</label><input id="show-premium-<?=e($s['id'])?>" name="premium_price" type="number" min="0" max="10000" value="<?=e($s['premium_price'])?>" required></div></div><button class="button button-dark" type="submit">Save showtime</button></form></details><?php endforeach;?></div></section>
+    <section class="admin-section" aria-labelledby="recent-bookings"><div class="section-heading compact"><h2 id="recent-bookings">Recent bookings</h2><p>Booking records are saved in SQLite.</p></div><?php if($bookings):?><div class="table-scroll"><table class="admin-table"><thead><tr><th scope="col">Reference</th><th scope="col">Movie</th><th scope="col">Customer</th><th scope="col">Seats</th><th scope="col">Total</th><th scope="col">Status</th></tr></thead><tbody><?php foreach($bookings as $b):?><tr><td><?=e($b['reference'])?></td><td><?=e($b['movie_title'])?><small><?=e(when($b['starts_at']))?></small></td><td><?=e($b['customer_name'])?></td><td><?=e($b['seat_count'])?></td><td><?=money($b['total_amount'])?></td><td><span class="status status-<?=e($b['status'])?>"><?=e($b['status'])?></span></td></tr><?php endforeach;?></tbody></table></div><?php else:?><div class="empty-state"><p>No bookings yet.</p></div><?php endif;?></section>
+  <?php endif;?></div>
+<?php layout_end();exit;}
+
+http_response_code(404);layout_start('Page not found');echo '<div class="container page-space"><h1>Page not found</h1><a class="button button-dark" href="/">Back to movies</a></div>';layout_end();

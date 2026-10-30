@@ -1,0 +1,102 @@
+REELSEAT CINEMA — PROJECT GUIDE AND VIVA NOTES
+================================================
+
+1. PROJECT IDEA
+ReelSeat is a small cinema ticket booking website. Visitors browse films, choose a
+showtime and seats, then receive a ticket. Staff use an admin page to manage films
+and showtimes. It is a classroom demonstration; no payment is collected.
+
+2. TECHNOLOGIES
+HTML provides the page structure. CSS creates the responsive visual design.
+Plain JavaScript controls the interactive seat map and live total. PHP handles
+requests, validation, sessions and database access. SQLite stores records in a
+real database file through PHP's PDO SQLite extension. No framework or paid API
+is required.
+
+3. MAIN USER FLOW
+Home / movie list -> search or filter -> movie details -> select showtime ->
+view seat map -> choose up to six seats -> enter name and email -> confirm ->
+view or print ticket -> My bookings -> optional cancellation.
+
+Admin flow: open Admin -> enter password -> add or edit movies and showtimes ->
+review bookings. A showtime with confirmed bookings cannot be changed.
+
+4. SEVEN MEANINGFUL FUNCTIONALITIES
+1) Browse, search and filter movies.
+2) View upcoming showtimes for a movie.
+3) View seat availability and prices; select seats and see the calculated total.
+4) Create a booking; the server verifies the seats and saves it in SQLite.
+5) View a ticket and the bookings made in the same browser.
+6) Cancel a booking, releasing its seats while keeping the cancelled record.
+7) Admin login, movie/showtime management and recent booking review.
+
+5. DATABASE DESIGN
+movies: film details and poster information.
+auditoriums: the cinema screen.
+seats: numbered seats and standard/premium tier.
+showtimes: movie, screen, date/time and tier prices.
+bookings: customer details, reference, total and status.
+booking_seats: seats and prices captured for each booking.
+
+The browser does not decide the final price. PHP reads prices from SQLite and
+calculates the total. Booking uses a transaction. A unique database index allows
+only one confirmed booking for a seat at a given showtime. Cancellation changes
+the booking and its seats to cancelled, so another visitor may book those seats.
+
+6. ACCESSIBILITY POINTS TO SHOW YOUR TEACHER
+- Semantic header, nav, main, sections, headings and footer.
+- A Skip to main content link for keyboard users.
+- Sufficient colour contrast, readable text, spacing and visible keyboard focus.
+- Descriptive alt text for film posters; decorative art hidden from screen readers.
+- Form labels remain visible; placeholders are hints, not replacements for labels.
+- Errors are explained in text. Required fields are marked and validated.
+- Seat buttons have names that announce row, number, tier, price and state.
+- Prices and selected seats appear in text, so hover or colour is not required.
+- Responsive layout and reduced-motion support.
+
+7. SHORT DEMO PLAN (ABOUT TWO MINUTES)
+1) Search for Solar Drift on the home page.
+2) Open a showtime. Hover or keyboard-focus a standard and premium seat; point
+   out the different prices and the total updating when seats are selected.
+3) Enter a sample name/email and confirm. Show the saved ticket and reference.
+4) Open My bookings, cancel the booking and show the seats are free again.
+5) Open Admin and show the saved booking record, plus the film/showtime forms.
+Use the same browser throughout; guest bookings belong to that browser session.
+
+8. POSSIBLE VIVA QUESTIONS AND SHORT ANSWERS
+Q: What makes it full-stack?
+A: HTML/CSS/JavaScript run in the browser; PHP processes requests and SQLite
+   persists movies, showtimes, seats and bookings.
+Q: Is SQLite a real database?
+A: Yes. It is a relational SQL database stored in a persistent file. PHP uses
+   PDO with prepared statements to query it.
+Q: Why is JavaScript used if PHP can render pages?
+A: JavaScript makes seat selection and price updates immediate. PHP still checks
+   every request and calculates the authoritative total.
+Q: How do you prevent two people booking the same seat?
+A: The database has a unique index for confirmed seat/showtime pairs. The booking
+   transaction either commits all selected seats or fails and rolls back.
+Q: Why use prepared statements?
+A: They keep user input separate from SQL and prevent SQL injection.
+Q: How do you stop HTML injection?
+A: User-supplied text is escaped before it is displayed in HTML.
+Q: What is a session?
+A: A server-side way to associate requests from the same browser. It identifies
+   the guest's bookings and whether the admin has signed in.
+Q: What does cancellation do?
+A: It updates the booking and seat records to cancelled, preserving history and
+   making the seats available again.
+Q: How is the design accessible?
+A: Semantic HTML, labels, alt text, text errors, strong contrast, visible focus,
+   keyboard-operated seat buttons and responsive layouts.
+Q: Why are there no payments?
+A: The course demonstration focuses on the booking/database flow. Integrating a
+   real payment provider would add accounts, costs and security requirements.
+Q: What would you improve later?
+A: Add customer accounts, email confirmations, payment integration, multiple
+   screens and automated accessibility checks after the core flow is complete.
+
+9. DEMO REMINDERS
+Use fictional customer details. Keep the PHP server running during the demo.
+If all seeded showtimes are in the past, rerun the database setup command to add
+new future shows. Do not delete the database file unless you intend to reset it.
