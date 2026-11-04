@@ -3,3 +3,4 @@ work/
 .env*
 !.env.example
 *.log
+PROJECT_GUIDE.txt

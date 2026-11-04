@@ -1,8 +1,8 @@
-# ReelSeat Cinema — PHP edition
+# ReelSeat Cinema
 
-A compact, accessible cinema booking website for a Web Technology course. It uses **HTML, CSS, plain JavaScript, PHP and SQLite**. No framework, Node.js, paid API or payment provider is needed to run the site.
+A cinema seat booking website built with **HTML5, CSS, plain JavaScript, PHP, and SQLite**. Visitors can reserve seats, view tickets, and manage bookings. Staff can manage movies and showtimes. This is a demonstration application; no payment is collected.
 
-## Eight features
+## Features
 
 1. Browse, search and filter fictional films.
 2. View each film's upcoming showtimes.
@@ -13,21 +13,20 @@ A compact, accessible cinema booking website for a Web Technology course. It use
 7. Sign in as admin to add/edit films and showtimes and inspect recent bookings.
 8. Register and sign in as a customer to see bookings across browsers; guest booking remains available.
 
-## Run on this computer
+## Run locally
 
-A portable PHP runtime is already in the ignored `work/php-runtime` folder. In PowerShell:
+Install PHP 8.2 or newer with the **PDO SQLite** and **mbstring** extensions enabled. No Node.js installation or external API is required. From a fresh clone, copy `.env.example` to `.env.local`, then replace the example `ADMIN_PASSWORD` with a password of at least 12 characters. In PowerShell:
 
 ```powershell
-cd C:\Projects\Movie_Booking
-.\work\php-runtime\php.exe setup.php
-.\work\php-runtime\php.exe -S localhost:8000 -t public
+Copy-Item .env.example .env.local
+# Edit .env.local and set ADMIN_PASSWORD to your own password.
+php setup.php
+php -S localhost:8000 -t public
 ```
 
-Open <http://localhost:8000>. Keep the terminal open while demonstrating the site; press Ctrl+C to stop it. The admin password is the `ADMIN_PASSWORD` value in the private `.env.local` file.
+Open <http://localhost:8000>. Keep the terminal open while using the site; press Ctrl+C to stop it. If `php` is not on your PATH, use the full path to your PHP executable for both commands. The [PHP built-in server](https://www.php.net/manual/en/features.commandline.webserver.php) is for local development and demonstrations.
 
-If you have PHP 8.2 or newer installed separately with **PDO SQLite** and **mbstring** enabled, use `php setup.php` and `php -S localhost:8000 -t public` instead. The [PHP built-in server](https://www.php.net/manual/en/features.commandline.webserver.php) is for local development and classroom demos.
-
-The database is `data/cinema.db`. `setup.php` creates the schema, three movies, 48 seats and nine future showtimes on a fresh copy. It preserves existing bookings when run again, and adds new showtimes if all future shows have passed.
+The database is `data/cinema.db`. `setup.php` creates the schema, three movies, 48 seats, and nine future showtimes on a fresh database. It preserves existing bookings when run again and adds new showtimes if all future shows have passed.
 
 ## How it works
 
@@ -37,10 +36,8 @@ The seven tables are `movies`, `auditoriums`, `seats`, `showtimes`, `bookings`, 
 
 Guest history is linked to a PHP session cookie. Customer accounts use hashed passwords and link bookings to a user ID, so signed-in users can see tickets in another browser. Signing in also claims guest bookings made in that browser. Customer data is escaped before it appears in HTML. Forms include CSRF tokens. The `data/` and `.env.local` files are ignored by Git and live outside the web document root.
 
-## Accessibility and demo
+## Accessibility
 
 Pages use semantic landmarks and headings, descriptive poster alt text, a skip link, visible form labels and focus states, text errors, responsive layouts, and reduced-motion styling. Seat buttons announce row, number, tier, price and availability; selected seats and prices are also displayed in text.
 
-See [PROJECT_GUIDE.txt](PROJECT_GUIDE.txt) for the full project flow, a two-minute demonstration, database explanation and possible viva questions.
-
-The existing GitHub repository has **not** been updated with this rebuild. Publishing the PHP version can be done after you review it and explicitly ask for that step.
+These features support accessibility, but the site has not undergone a complete WCAG conformance audit.
